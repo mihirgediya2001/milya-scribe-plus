@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - Milya Scribe Plus</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body data-page="dashboard">
+  <nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">
+      <span class="logo">🦷</span>
+      <h1>Milya Scribe Plus</h1>
+    </a>
+    <div class="navbar-right" id="navUser"></div>
+  </nav>
+
+  <div class="container">
+    <div class="dashboard-hero">
+      <h2 id="heroTitle">Welcome to Milya Scribe Plus</h2>
+      <p id="heroSubtitle">
+        AI-powered clinical documentation with intelligent clarifying questions.
+      </p>
+    </div>
+
+    <!-- Role-specific quick actions -->
+    <div id="quickActions" class="feature-grid"></div>
+
+    <!-- Recent sessions -->
+    <div id="recentSessions" class="mt-24" style="display:none">
+      <h3 style="font-size:16px; margin-bottom:12px">Recent Sessions</h3>
+      <div id="sessionsList"></div>
+    </div>
+
+    <!-- Admin: Team members (hidden by default) -->
+    <div id="teamSection" class="mt-24" style="display:none">
+      <h3 style="font-size:16px; margin-bottom:12px">Team Members</h3>
+      <div id="teamList"></div>
+    </div>
+
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (!API.getToken()) { window.location.href = "/login"; return; }
+
+      const user = API.getUser();
+      if (!user) return;
+
+      // Navbar
+      document.getElementById("navUser").innerHTML = `
+        <span class="clinic-badge">${user.clinic_name}</span>
+        <span class="role-badge">${user.role}</span>
+        <span class="user-name">${user.name}</span>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Logout</button>
+      `;
+      document.getElementById("logoutBtn").addEventListener("click", () => {
+        API.clearAuth();
+        window.location.href = "/login";
+      });
+
+      // Role-specific hero text and actions
+      setupRoleUI(user.role);
+
+      // All roles can see sessions
+      await loadSessions();
+
+      // Admin-only sections
+      if (user.role === "admin") {
+        await loadTeam();
+      }
+    });
+
+
+    function setupRoleUI(role) {
+      const hero = document.getElementById("heroTitle");
+      const sub = document.getElementById("heroSubtitle");
+      const actions = document.getElementById("quickActions");
+
+      const cards = {
+        admin: [
+          { icon: "🎙", title: "New Session", desc: "Start a new scribe session", href: "/scribe" },
+          { icon: "👥", title: "Team Management", desc: "View and manage your clinic staff", action: "scrollTeam" },
+          { icon: "📋", title: "All Sessions", desc: "Review and finalize documentation", action: "scrollSessions" },
+        ],
+        dentist: [
+          { icon: "🎙", title: "New Session", desc: "Record and document a patient visit", href: "/scribe" },
+          { icon: "🧠", title: "AI Diagnostics", desc: "Get AI-suggested diagnoses and treatment plans", href: "/scribe" },
+          { icon: "📋", title: "My Sessions", desc: "Resume or finalize your notes", action: "scrollSessions" },
+        ],
+        assistant: [
+          { icon: "🎙", title: "New Session", desc: "Record a patient conversation for the dentist", href: "/scribe" },
+          { icon: "📋", title: "My Recordings", desc: "View your recent recordings", action: "scrollSessions" },
+        ],
+      };
+
+      const roleDescriptions = {
+        admin: "Manage your clinic, team, and all documentation.",
+        dentist: "Record visits with AI-powered note generation and diagnostic suggestions.",
+        assistant: "Record patient conversations for the clinical team to review.",
+      };
+
+      sub.textContent = roleDescriptions[role] || sub.textContent;
+
+      const items = cards[role] || cards.assistant;
+      actions.innerHTML = items.map(c => `
+        <${c.href ? `a href="${c.href}"` : 'div'} class="card feature-card" style="cursor:pointer; text-decoration:none; color:inherit"
+           ${c.action ? `onclick="document.getElementById('${c.action === 'scrollTeam' ? 'teamSection' : 'recentSessions'}').scrollIntoView({behavior:'smooth'})"` : ''}>
+          <div class="icon">${c.icon}</div>
+          <h3>${c.title}</h3>
+          <p>${c.desc}</p>
+        </${c.href ? 'a' : 'div'}>
+      `).join("");
+    }
+
+
+    async function loadSessions() {
+      try {
+        const sessions = await API.sessions();
+        if (sessions && sessions.length > 0) {
+          document.getElementById("recentSessions").style.display = "block";
+          const list = document.getElementById("sessionsList");
+          for (const s of sessions.slice(0, 10)) {
+            const a = document.createElement("a");
+            a.href = `/scribe?session=${s.id}`;
+            a.className = "card";
+            a.style.cssText = "margin-bottom:8px; padding:14px 18px; font-size:13px; display:flex; align-items:center; gap:12px; text-decoration:none; color:inherit; cursor:pointer; transition:box-shadow 0.15s";
+            a.addEventListener("mouseenter", () => a.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)");
+            a.addEventListener("mouseleave", () => a.style.boxShadow = "");
+            const statusIcon = s.status === "finalized" ? "✅" : "🔄";
+            const date = s.created_at.slice(0, 10);
+            const byLine = s.created_by ? ` &middot; ${escapeHtml(s.created_by)}` : "";
+            a.innerHTML = `
+              <span style="font-size:18px">${statusIcon}</span>
+              <div style="flex:1; min-width:0">
+                <div style="font-weight:600; font-size:14px">${escapeHtml(s.title)}</div>
+                <div class="text-muted" style="font-size:12px">${date} &middot; ${s.status}${byLine}</div>
+              </div>
+              <span style="font-size:12px; color:var(--primary); flex-shrink:0">Resume &rarr;</span>
+            `;
+            list.appendChild(a);
+          }
+        }
+      } catch { /* sessions list is optional */ }
+    }
+
+
+    async function loadTeam() {
+      try {
+        const resp = await API.request("GET", "/api/admin/users");
+        if (resp && resp.length > 0) {
+          document.getElementById("teamSection").style.display = "block";
+          const list = document.getElementById("teamList");
+          for (const u of resp) {
+            const div = document.createElement("div");
+            div.className = "card";
+            div.style.cssText = "margin-bottom:6px; padding:12px 18px; font-size:13px; display:flex; align-items:center; gap:12px";
+            div.innerHTML = `
+              <span style="width:36px; height:36px; border-radius:50%; background:var(--primary-light); color:var(--primary-dark); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0">
+                ${u.name.charAt(0).toUpperCase()}
+              </span>
+              <div style="flex:1">
+                <div style="font-weight:600">${escapeHtml(u.name)}</div>
+                <div class="text-muted" style="font-size:12px">${escapeHtml(u.email)}</div>
+              </div>
+              <span class="role-badge">${u.role}</span>
+            `;
+            list.appendChild(div);
+          }
+        }
+      } catch { /* admin section is optional */ }
+    }
+
+
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign Up - Milya Scribe Plus</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body data-page="signup">
+  <div class="auth-page">
+    <div class="auth-card card">
+      <div class="brand">
+        <div class="logo">🦷</div>
+        <h1>Milya Scribe Plus</h1>
+        <p>Create your clinic account</p>
+      </div>
+
+      <form id="signupForm">
+        <div class="form-group">
+          <label for="fullName">Full Name</label>
+          <input id="fullName" name="fullName" type="text" class="form-control"
+                 placeholder="Dr. Jane Smith" required />
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" class="form-control"
+                 placeholder="you@clinic.com" required />
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" class="form-control"
+                 placeholder="At least 6 characters" required minlength="6" />
+        </div>
+        <div class="form-group">
+          <label for="clinicName">Clinic / Organisation Name</label>
+          <input id="clinicName" name="clinicName" type="text" class="form-control"
+                 placeholder="Smile Dental Montreal" required />
+        </div>
+        <div class="form-group">
+          <label for="role">Your Role</label>
+          <select id="role" name="role" class="form-control" required>
+            <option value="">Select a role</option>
+            <option value="admin">Admin / Clinic Owner</option>
+            <option value="dentist">Dentist</option>
+            <option value="assistant">Dental Assistant</option>
+          </select>
+        </div>
+        <div id="signupError" class="form-error"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:8px">
+          Create Account
+        </button>
+      </form>
+
+      <div class="footer-link">
+        Already have an account? <a href="/login">Log in</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+</body>
+</html>

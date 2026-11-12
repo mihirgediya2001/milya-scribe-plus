@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scribe Session - Milya Scribe Plus</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body data-page="scribe">
+  <nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">
+      <span class="logo">🦷</span>
+      <h1>Milya Scribe Plus</h1>
+    </a>
+    <div class="navbar-right" id="navUser"></div>
+  </nav>
+
+  <div class="container">
+    <div class="scribe-layout">
+
+      <!-- ============================================================= -->
+      <!-- LEFT PANEL: conversation + input                              -->
+      <!-- ============================================================= -->
+      <div class="panel">
+        <div class="card" style="flex:1; display:flex; flex-direction:column">
+          <div class="panel-head">
+            <h2>Conversation</h2>
+            <div style="display:flex; gap:6px">
+              <span style="background:#e0f7fa; color:#0e7490; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600">
+                Comprehensive Examination
+              </span>
+              <button id="clearBtn" class="btn btn-ghost btn-sm">Clear</button>
+            </div>
+          </div>
+
+          <div id="statusBar" class="status-bar idle">
+            Ready. Record or type the patient's complaint.
+          </div>
+
+          <!-- Text + voice input -->
+          <div class="input-area">
+            <textarea id="textInput" class="form-control"
+                      placeholder="Type what the patient says, or click the mic to record..."></textarea>
+            <button id="recordBtn" class="btn btn-primary btn-record" title="Record audio">
+              🎙
+            </button>
+            <button id="sendTextBtn" class="btn btn-accent" title="Send text">
+              Send
+            </button>
+          </div>
+
+          <!-- Transcript display -->
+          <div id="transcriptBox" class="transcript-box">
+            <p class="placeholder">Your conversation will appear here.</p>
+          </div>
+
+          <!-- Clarifying questions: one-at-a-time Q&A -->
+          <div id="questionsBox" class="questions-box hidden">
+            <div class="label">🤖 Clarifying question from the scribe</div>
+            <div id="currentQuestion" class="current-question"></div>
+            <div id="questionProgress" class="question-progress"></div>
+            <div class="reply-area">
+              <form id="replyForm" class="reply-form">
+                <input id="replyInput" type="text" placeholder="Type your answer or use the mic..."
+                       autocomplete="off" />
+                <button type="button" id="replyRecordBtn" class="btn btn-primary btn-record-sm" title="Record answer">
+                  🎙
+                </button>
+                <button type="submit" class="btn btn-accent btn-sm">Reply</button>
+              </form>
+              <button type="button" id="skipQuestionBtn" class="btn btn-ghost btn-sm" style="margin-top:6px; font-size:12px">
+                Skip this question
+              </button>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="actions-row">
+            <button id="finalizeBtn" class="btn btn-accent">
+              ✅ Finalize Note
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================= -->
+      <!-- RIGHT PANEL: template fields + generated note                 -->
+      <!-- ============================================================= -->
+      <div class="panel">
+        <div class="card" style="flex:1; display:flex; flex-direction:column">
+          <div class="panel-head">
+            <h2>Template Fields</h2>
+            <span id="progressText" class="progress-text">0 / 10 fields</span>
+          </div>
+
+          <ul id="fieldList" class="field-list"></ul>
+
+          <!-- AI Suggestions (dentist/hygienist/admin only) -->
+          <div id="suggestionsBox" class="suggestions-box hidden">
+            <div class="suggestions-header">
+              <span>🧠 AI Clinical Suggestions</span>
+              <span class="suggestions-disclaimer">For clinical review only</span>
+            </div>
+            <div id="diagnosisList" class="suggestion-group hidden">
+              <div class="suggestion-label">Differential Diagnoses</div>
+              <ul id="diagnosisItems" class="suggestion-items"></ul>
+            </div>
+            <div id="nextStepsList" class="suggestion-group hidden">
+              <div class="suggestion-label">Recommended Next Steps</div>
+              <ul id="nextStepsItems" class="suggestion-items"></ul>
+            </div>
+          </div>
+
+          <div class="panel-head" style="margin-top:22px">
+            <h2>Generated Note</h2>
+            <button id="copyBtn" class="btn btn-ghost btn-sm" disabled>
+              📋 Copy
+            </button>
+          </div>
+
+          <pre id="noteOutput" class="note-output">Note will appear here.</pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/scribe.js"></script>
+</body>
+</html>

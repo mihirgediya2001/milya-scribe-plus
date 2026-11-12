@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite3
+.env
+backend/venv/
+backend/milya_scribe*.db
+.DS_Store
+*.egg-info/
+dist/
+build/

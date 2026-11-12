@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: milya-scribe-plus
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./milya_scribe.db
+      - key: LLM_MODEL
+        value: qwen/qwen3.8-27b
+      - key: STT_MODEL
+        value: whisper-large-v3-turbo
+      - key: PYTHON_VERSION
+        value: "3.13.0"
