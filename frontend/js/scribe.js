@@ -268,7 +268,11 @@ function skipQuestion() {
     showCurrentQuestion();
   } else {
     hideQuestions();
-    setStatus("idle", "Questions skipped. You can add more details or finalize.");
+    if (state.transcript.trim()) {
+      runAnalysis();
+    } else {
+      setStatus("idle", "Questions skipped. You can add more details or finalize.");
+    }
   }
 }
 

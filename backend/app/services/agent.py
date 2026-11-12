@@ -145,6 +145,7 @@ def analyze_transcript(transcript: str) -> dict:
     questions = parsed.get("clarifying_questions", [])
     if is_complete:
         questions = []
+    questions = questions[:3]
     return {
         "session_title": parsed.get("session_title", "Untitled Session"),
         "filled_fields": parsed.get("filled_fields", {}),
