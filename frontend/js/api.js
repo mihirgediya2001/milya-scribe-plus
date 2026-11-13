@@ -42,7 +42,7 @@ const API = {
 
     const resp = await fetch(path, options);
 
-    if (resp.status === 401) {
+    if (resp.status === 401 && !["/api/auth/login", "/api/auth/signup"].includes(path)) {
       this.clearAuth();
       window.location.href = "/login";
       return;
