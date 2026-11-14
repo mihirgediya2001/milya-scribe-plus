@@ -1,13 +1,14 @@
 document.addEventListener("DOMContentLoaded", () => {
   if (!API.getToken()) { window.location.href = "/login"; return; }
   populateNavbar();
+  initScribe();
 
   const params = new URLSearchParams(window.location.search);
   const resumeId = params.get("session");
   if (resumeId) {
     loadSession(resumeId);
   } else {
-    loadTemplateSelector();
+    loadTemplateChips();
   }
 });
 
@@ -47,33 +48,34 @@ let state = {
 
 
 /* =========================================================================
-   Template Selector
+   Template Chips (always visible above panels)
    ========================================================================= */
 
-async function loadTemplateSelector() {
+async function loadTemplateChips() {
   const grid = document.getElementById("templateGrid");
   try {
     const templates = await API.request("GET", "/api/scribe/templates");
     grid.innerHTML = "";
     for (const t of templates) {
       const btn = document.createElement("button");
-      btn.className = "template-btn";
+      btn.className = "template-chip";
       btn.textContent = t.name;
-      btn.addEventListener("click", () => selectTemplate(t.key, t.name));
+      btn.dataset.key = t.key;
+      btn.addEventListener("click", () => selectTemplate(t.key));
       grid.appendChild(btn);
     }
+    selectTemplate(templates[0].key);
   } catch {
-    grid.innerHTML = '<p class="text-muted">Could not load templates. Using default.</p>';
-    selectTemplate("comprehensive_exam", "Comprehensive Examination");
+    selectTemplate("comprehensive_exam");
   }
 }
 
-function selectTemplate(key, name) {
+function selectTemplate(key) {
   state.templateKey = key;
-  document.getElementById("templateBadge").textContent = name;
-  document.getElementById("templateSelector").classList.add("hidden");
-  document.getElementById("scribeContent").classList.remove("hidden");
-  initScribe();
+  const chips = document.querySelectorAll(".template-chip");
+  chips.forEach(c => {
+    c.classList.toggle("active", c.dataset.key === key);
+  });
 }
 
 
@@ -118,9 +120,6 @@ function checkPermissions() {
 
 async function loadSession(sessionId) {
   setStatus("thinking", "Loading session...");
-  document.getElementById("templateSelector").classList.add("hidden");
-  document.getElementById("scribeContent").classList.remove("hidden");
-  initScribe();
 
   try {
     const res = await API.getSession(sessionId);
@@ -128,8 +127,8 @@ async function loadSession(sessionId) {
     state.templateKey = res.template_key || "comprehensive_exam";
     state.transcript = res.transcript;
 
-    document.getElementById("templateBadge").textContent =
-      templateKeyToName(state.templateKey);
+    await loadTemplateChips();
+    selectTemplate(state.templateKey);
 
     const box = document.getElementById("transcriptBox");
     box.innerHTML = "";
@@ -153,19 +152,6 @@ async function loadSession(sessionId) {
   } catch (err) {
     setStatus("idle", `Could not load session: ${err.message}`);
   }
-}
-
-function templateKeyToName(key) {
-  const names = {
-    comprehensive_exam: "Comprehensive Examination",
-    emergency_exam: "Emergency Examination",
-    recall_exam: "Recall Examination",
-    soap_comprehensive: "SOAP Comprehensive / Recall Examination",
-    soap_emergency: "SOAP Emergency Examination",
-    soap_summarize: "SOAP Summarize",
-    summarize: "Summarize",
-  };
-  return names[key] || key;
 }
 
 
@@ -519,13 +505,11 @@ function handleCopy() {
 }
 
 function handleClear() {
-  state = {
-    sessionId: null, templateKey: null, transcript: "", mediaRecorder: null, isRecording: false,
-    chunks: [], questions: [], currentQuestionIdx: 0, replyRecorder: null,
-    isReplyRecording: false, replyChunks: [],
-  };
-  document.getElementById("scribeContent").classList.add("hidden");
-  document.getElementById("templateSelector").classList.remove("hidden");
+  state.sessionId = null;
+  state.transcript = "";
+  state.questions = [];
+  state.currentQuestionIdx = 0;
+
   document.getElementById("transcriptBox").innerHTML =
     '<p class="placeholder">Your conversation will appear here.</p>';
   document.getElementById("fieldList").innerHTML = "";
@@ -534,9 +518,9 @@ function handleClear() {
   document.getElementById("copyBtn").disabled = true;
   document.getElementById("suggestionsBox").classList.add("hidden");
   hideQuestions();
+  setStatus("idle", "Ready. Record or type the dentist-patient conversation.");
   document.title = "Scribe Session - Milya Scribe Plus";
   window.history.replaceState(null, "", "/scribe");
-  loadTemplateSelector();
 }
 
 function escapeHtml(str) {
