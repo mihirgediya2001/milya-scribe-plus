@@ -1,6 +1,6 @@
 # Milya Scribe Plus
 
-AI-powered dental clinical documentation with intelligent clarifying questions.
+AI-powered dental clinical documentation with intelligent clarifying questions and multi-template support.
 
 **Live Demo**: [milya-scribe-plus.onrender.com](https://milya-scribe-plus.onrender.com)
 
@@ -8,9 +8,10 @@ AI-powered dental clinical documentation with intelligent clarifying questions.
 
 ## Features
 
-- **Voice + Text input**: Record patient conversations or type them in. Whisper with dental vocabulary bias handles transcription.
-- **Smart Clarifying Agent**: The LLM analyzes the transcript against a Comprehensive Examination template, generates a note AND identifies missing fields with up to 3 follow-up questions asked one at a time.
-- **AI Clinical Suggestions**: Differential diagnoses and recommended next steps grounded in the transcript (dentist/admin only).
+- **Voice + Text input**: Record dentist-patient conversations or type them in. Whisper with dental vocabulary bias handles transcription.
+- **7 Summary Templates**: Comprehensive Exam, Emergency Exam, Recall Exam, SOAP Comprehensive, SOAP Emergency, SOAP Summarize, and Summarize. Each template defines its own fields, note sections, and rendering.
+- **Smart Clarifying Agent**: The LLM analyzes the transcript against the selected template, generates a best-effort note, identifies missing fields, and asks up to 3 follow-up questions one at a time.
+- **AI Clinical Suggestions**: Differential diagnoses and recommended next steps grounded in the transcript (dentist/admin only). Each prefixed with confidence level: "Likely:", "Possible:", "Consider:".
 - **Structured Notes**: Outputs a formatted clinical note ready to paste into any dental PMS.
 - **Multi-Tenancy**: Each clinic's data is fully isolated via `clinic_id` on every table.
 - **Role-Based Access Control**: Three roles (Admin, Dentist, Assistant) with distinct dashboards, permissions, and session visibility.
@@ -22,80 +23,136 @@ AI-powered dental clinical documentation with intelligent clarifying questions.
 
 ```mermaid
 graph TB
-    subgraph Client["Browser (Vanilla JS)"]
-        UI[Login / Signup / Dashboard / Scribe]
-        API_JS[api.js - HTTP Client]
+    subgraph Client["Browser (Vanilla JS, no build step)"]
+        LOGIN[Login / Signup]
+        DASH[Dashboard<br>Sessions list + Team mgmt]
+        SCRIBE[Scribe Page<br>Recording + Q&A + Notes]
+        API_JS[api.js<br>HTTP client with Bearer auth]
     end
 
-    subgraph Server["FastAPI Backend"]
-        AUTH[Auth Router<br>/api/auth/*]
-        SCRIBE[Scribe Router<br>/api/scribe/*]
-        ADMIN[Admin Router<br>/api/admin/*]
-        DEPS[Dependencies<br>RBAC + Auth Guards]
-        MODELS[SQLAlchemy Models]
+    subgraph Server["FastAPI Backend (Python 3.11)"]
+        AUTH[Auth Router<br>POST /api/auth/login, signup]
+        SCRIBE_R[Scribe Router<br>POST /api/scribe/transcribe<br>POST /api/scribe/analyze<br>POST /api/scribe/finalize<br>GET /api/scribe/sessions]
+        ADMIN_R[Admin Router<br>GET/POST /api/admin/users]
+        TMPL_R[Templates<br>GET /api/scribe/templates]
+        DEPS[Dependencies<br>JWT decode + RBAC guards]
+        SVC_AUTH[Auth Service<br>bcrypt + JWT tokens]
+        SVC_STT[Transcription Service<br>Groq Whisper API]
+        SVC_AGENT[Clarifying Agent<br>Template-aware LLM calls]
+        TMPL_REG[Template Registry<br>7 templates with fields + renderers]
+        MODELS[SQLAlchemy ORM]
     end
 
-    subgraph AI["Groq Cloud"]
+    subgraph AI["Groq Cloud (Free Tier)"]
         WHISPER[Whisper large-v3-turbo<br>Speech-to-Text]
-        QWEN[Qwen 27B<br>Analysis + Note Gen]
+        QWEN[Qwen 3.8-27B<br>JSON mode analysis + note gen]
     end
 
     subgraph DB["SQLite"]
-        TABLES[(Clinic / User / Session / AuditLog)]
+        TABLES[(Clinic / User /<br>ScribeSession / AuditLog)]
     end
 
-    UI --> API_JS
-    API_JS -->|REST API| AUTH
-    API_JS -->|REST API| SCRIBE
-    API_JS -->|REST API| ADMIN
-    AUTH --> DEPS
-    SCRIBE --> DEPS
-    ADMIN --> DEPS
-    DEPS --> MODELS
-    MODELS --> TABLES
-    SCRIBE -->|Audio Upload| WHISPER
-    SCRIBE -->|Transcript| QWEN
+    LOGIN --> API_JS
+    DASH --> API_JS
+    SCRIBE --> API_JS
+    API_JS -->|REST + JSON| AUTH
+    API_JS -->|REST + JSON| SCRIBE_R
+    API_JS -->|REST + JSON| ADMIN_R
+    AUTH --> DEPS --> MODELS --> TABLES
+    SCRIBE_R --> DEPS
+    ADMIN_R --> DEPS
+    SCRIBE_R --> SVC_STT -->|Audio bytes| WHISPER
+    SCRIBE_R --> SVC_AGENT -->|Transcript + template schema| QWEN
+    SCRIBE_R --> TMPL_R --> TMPL_REG
+    SVC_AGENT --> TMPL_REG
+    AUTH --> SVC_AUTH
 ```
 
 ---
 
 ## Clarifying Agent Flow
 
+This is the core loop. The agent makes two types of LLM calls:
+
+1. **Analyze**: extract fields, generate best-effort note, ask clarifying questions
+2. **Finalize**: generate polished clinical note from the full transcript
+
 ```mermaid
 sequenceDiagram
-    participant P as Patient / Dentist
-    participant UI as Browser
-    participant API as FastAPI
-    participant LLM as Groq (Qwen 27B)
+    participant D as Dentist
+    participant UI as Browser (scribe.js)
+    participant API as FastAPI Backend
+    participant LLM as Groq Qwen 27B
 
-    P->>UI: Speaks or types complaint
-    UI->>API: POST /api/scribe/transcribe (audio)
+    D->>UI: Records audio or types text
+    UI->>API: POST /transcribe (audio blob)
     API->>LLM: Whisper STT
     LLM-->>API: Transcript text
     API-->>UI: { text }
+    UI->>UI: Append to transcript panel
 
-    UI->>API: POST /api/scribe/analyze { transcript }
-    API->>LLM: Analyze against template
-    LLM-->>API: Filled fields + note + questions (max 3) + suggestions
-    API-->>UI: AnalyzeResponse
+    UI->>API: POST /analyze { transcript, template_key }
+    Note over API: Build system prompt from<br>selected template's FIELDS<br>and NOTE_SECTIONS
+    API->>LLM: System prompt + transcript (JSON mode)
+    LLM-->>API: { filled_fields, missing_fields,<br>note, clarifying_questions,<br>is_complete, ai_suggestions }
+    Note over API: Hard cap: questions[:3]<br>If is_complete: questions = []
+    API-->>UI: AnalyzeResponse + template_fields
 
-    alt Missing fields exist
-        loop Up to 3 clarifying questions
-            UI->>P: Show question (one at a time)
-            P->>UI: Answer (voice or text) or Skip
+    alt has clarifying questions
+        loop 1 to 3 questions (one at a time)
+            UI->>D: Show question + answer input
+            alt Answers via voice
+                D->>UI: Records answer
+                UI->>API: POST /transcribe (answer audio)
+                API-->>UI: Answer text
+            else Answers via text
+                D->>UI: Types answer
+            else Skips
+                D->>UI: Click Skip
+            end
         end
-        UI->>API: POST /api/scribe/analyze { updated transcript }
-        API->>LLM: Re-analyze
-        LLM-->>API: Updated response
+        UI->>UI: Append Q&A to transcript
+        UI->>API: POST /analyze { updated transcript }
+        API->>LLM: Re-analyze with more context
+        LLM-->>API: Updated fields + note + new questions
+        API-->>UI: Updated AnalyzeResponse
     end
 
-    P->>UI: Click "Finalize Note"
-    UI->>API: POST /api/scribe/finalize { session_id }
+    D->>UI: Click "Finalize Note"
+    UI->>API: POST /finalize { session_id }
+    Note over API: If no session yet,<br>auto-runs analyze first
     API->>LLM: Generate polished note
     LLM-->>API: Final clinical note
     API-->>UI: FinalizeResponse
-    UI->>P: Display final note + Copy button
+    UI->>D: Display final note + Copy button
 ```
+
+---
+
+## Template System
+
+Each template is a Python module in `backend/app/templates/` with three exports:
+
+| Export | Type | Purpose |
+|--------|------|---------|
+| `TEMPLATE_NAME` | `str` | Display name (e.g., "Comprehensive Examination") |
+| `FIELDS` | `dict` | Field definitions with labels and descriptions for the LLM |
+| `NOTE_SECTIONS` | `list[tuple]` | Ordered (label, key) pairs defining the rendered note structure |
+| `render_note(note_dict)` | `function` | Formats the LLM's JSON output into a readable clinical note |
+
+The agent service builds its system prompt dynamically from the template's `FIELDS` and `NOTE_SECTIONS`, so adding a new template requires zero changes to the LLM integration code.
+
+Available templates:
+
+| Template | Key | Use Case |
+|----------|-----|----------|
+| Comprehensive Examination | `comprehensive_exam` | Full new patient exam |
+| Emergency Examination | `emergency_exam` | Urgent/walk-in visits |
+| Recall Examination | `recall_exam` | Periodic checkups |
+| SOAP Comprehensive | `soap_comprehensive` | SOAP format, full exam |
+| SOAP Emergency | `soap_emergency` | SOAP format, emergency |
+| SOAP Summarize | `soap_summarize` | SOAP format, brief summary |
+| Summarize | `summarize` | Quick free-text summary |
 
 ---
 
@@ -119,7 +176,7 @@ graph LR
         USERS[Manage Users]
     end
 
-    subgraph Session Access
+    subgraph Session_Access["Session Visibility"]
         ALL[All Clinic Sessions]
         OWN_ASST[Own + Assistant Sessions]
         OWN[Own Sessions Only]
@@ -158,11 +215,14 @@ erDiagram
         string clinic_id FK
         string user_id FK
         string title
+        string template_key
         text transcript
         json note_json
         text note_rendered
         json suggestions_json
         enum status "in_progress | finalized"
+        datetime created_at
+        datetime updated_at
     }
     AUDIT_LOG {
         string id PK
@@ -171,6 +231,7 @@ erDiagram
         string action
         string target_type
         string target_id
+        string details
         datetime created_at
     }
 
@@ -183,16 +244,34 @@ erDiagram
 
 ---
 
+## API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/signup` | No | Create account + clinic |
+| POST | `/api/auth/login` | No | Get JWT token |
+| GET | `/api/auth/me` | Yes | Current user info |
+| GET | `/api/scribe/templates` | Yes | List available templates |
+| POST | `/api/scribe/transcribe` | record | Upload audio, get text |
+| POST | `/api/scribe/analyze` | record | Analyze transcript against template |
+| POST | `/api/scribe/finalize` | finalize | Generate polished final note |
+| GET | `/api/scribe/sessions` | record | List sessions (role-filtered) |
+| GET | `/api/scribe/sessions/:id` | record | Get session detail |
+| GET | `/api/admin/users` | manage_users | List clinic team |
+| POST | `/api/admin/users` | manage_users | Add team member |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.11, FastAPI, SQLAlchemy, SQLite |
-| Frontend | Vanilla HTML/CSS/JS (no build step) |
-| STT | Groq Whisper large-v3-turbo |
-| LLM | Groq Qwen 27B (JSON mode) |
-| Auth | bcrypt password hashing, Bearer token sessions |
-| Hosting | Render (free tier) |
+| Backend | Python 3.11, FastAPI, SQLAlchemy, Pydantic v2, SQLite |
+| Frontend | Vanilla HTML/CSS/JS (no build step, no framework) |
+| STT | Groq Whisper large-v3-turbo (dental vocabulary bias) |
+| LLM | Groq Qwen 3.8-27B (JSON mode, temperature 0.1) |
+| Auth | bcrypt password hashing, Bearer JWT tokens |
+| Hosting | Render (free tier, auto-deploy from GitHub) |
 
 ---
 
@@ -202,37 +281,44 @@ erDiagram
 milya-scribe-plus/
   backend/
     app/
-      main.py              # FastAPI app, static file serving
-      config.py            # Pydantic settings from env
-      database.py          # SQLAlchemy engine + session
+      main.py              # FastAPI app, CORS, static file serving
+      config.py            # Pydantic settings (GROQ_API_KEY, models, etc.)
+      database.py          # SQLAlchemy engine + session factory
       models.py            # ORM: Clinic, User, ScribeSession, AuditLog
-      dependencies.py      # Auth guards, RBAC permission checks
+      dependencies.py      # JWT auth + RBAC permission decorators
       routers/
-        auth.py            # /api/auth/signup, /api/auth/login
-        scribe.py          # /api/scribe/transcribe, analyze, finalize
-        admin.py           # /api/admin/users, audit
+        auth.py            # Signup (creates clinic), login (returns JWT)
+        scribe.py          # Transcribe, analyze, finalize, list sessions
+        admin.py           # Team management endpoints
       schemas/
-        auth.py            # Request/response models for auth
-        scribe.py          # Request/response models for scribe
+        auth.py            # Pydantic request/response for auth
+        scribe.py          # Pydantic request/response for scribe
       services/
-        auth.py            # Password hashing, token generation
-        transcription.py   # Whisper API with dental vocab bias
-        agent.py           # Clarifying agent + final note LLM calls
+        auth.py            # Password hashing, JWT encode/decode
+        transcription.py   # Groq Whisper API with dental vocab prompt
+        agent.py           # Template-aware LLM calls (analyze + finalize)
       templates/
-        comprehensive_exam.py  # Field definitions + note renderer
+        __init__.py              # Template registry + get_template()
+        comprehensive_exam.py    # 10-field comprehensive exam
+        emergency_exam.py        # Emergency visit template
+        recall_exam.py           # Recall/periodic checkup
+        soap_comprehensive.py    # SOAP format, comprehensive
+        soap_emergency.py        # SOAP format, emergency
+        soap_summarize.py        # SOAP format, summary
+        summarize.py             # Quick summary template
     requirements.txt
   frontend/
-    css/style.css
+    css/style.css          # Full responsive stylesheet
     js/
-      api.js               # HTTP client with auth headers
+      api.js               # HTTP client with Bearer auth + 401 handling
       auth.js              # Login/signup form logic
       scribe.js            # Recording, analysis loop, Q&A, finalize
     login.html
     signup.html
-    dashboard.html
-    scribe.html
+    dashboard.html         # Role-specific cards + session list
+    scribe.html            # Main scribe workspace
   render.yaml              # Render deployment blueprint
-  .python-version          # Pin Python 3.11.12
+  .python-version          # Pin Python 3.11.12 for Render
 ```
 
 ---
@@ -273,8 +359,11 @@ Open http://localhost:8000
 
 ## Key Design Decisions
 
+- **Template-driven prompts**: The LLM system prompt is built dynamically from the selected template's fields and sections. Adding a new template (e.g., periodontal exam) means adding one Python file with no changes to the agent or router code.
 - **One-at-a-time Q&A**: Questions are shown sequentially instead of all at once, creating a natural conversation flow that mirrors how dentists interview patients.
-- **Best-effort notes**: The note is always generated, even with incomplete information. The clarifying loop makes it progressively better but the note is usable from the first analysis.
-- **Max 3 questions per round**: Keeps the interaction focused. After answering or skipping, the agent re-analyzes and may ask new questions based on updated context.
-- **AI suggestions as decision support**: Differential diagnoses and next steps are explicitly labeled as suggestions ("Likely:", "Possible:", "Consider:"), never presented as definitive diagnoses.
+- **Best-effort notes**: The note is always generated, even with incomplete information. The clarifying loop makes it progressively better, but the note is usable from the first analysis.
+- **Max 3 questions per round**: Hard-capped in the backend (`questions[:3]`), not just in the prompt. After answering or skipping, the agent re-analyzes with updated context and may ask new questions.
+- **AI suggestions as decision support**: Differential diagnoses and next steps are explicitly labeled with confidence levels ("Likely:", "Possible:", "Consider:"), never presented as definitive diagnoses.
+- **Backend-enforced consistency**: `is_complete=true` forces `questions=[]` server-side, regardless of what the LLM returns. The frontend also tracks a `finalized` flag to prevent questions from appearing after finalize.
 - **SQLite for simplicity**: No external database to configure. Data persists locally; on Render free tier it resets on deploy (acceptable for a demo).
+- **No build step**: The frontend is plain HTML/CSS/JS served as static files by FastAPI. No npm, no webpack, no React. This keeps deployment simple and the codebase easy to understand.
