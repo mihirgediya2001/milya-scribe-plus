@@ -36,6 +36,7 @@ let state = {
   sessionId: null,
   templateKey: null,
   transcript: "",
+  finalized: false,
   mediaRecorder: null,
   isRecording: false,
   chunks: [],
@@ -258,7 +259,7 @@ async function handleReplyAudioBlob(blob) {
     const res = await API.transcribe(formData);
     if (res.text) {
       document.getElementById("replyInput").value = res.text;
-      handleReply();
+      await handleReply();
     } else {
       setStatus("idle", "No speech detected. Try again.");
     }
@@ -288,12 +289,12 @@ async function handleAudioBlob(blob) {
   }
 }
 
-function handleTextInput(textarea) {
+async function handleTextInput(textarea) {
   const text = textarea.value.trim();
   if (!text) return;
   textarea.value = "";
   addToTranscript("conversation", text);
-  runAnalysis();
+  await runAnalysis();
 }
 
 async function handleReply() {
@@ -314,14 +315,14 @@ async function handleReply() {
   }
 }
 
-function skipQuestion() {
+async function skipQuestion() {
   state.currentQuestionIdx++;
   if (state.currentQuestionIdx < state.questions.length) {
     showCurrentQuestion();
   } else {
     hideQuestions();
     if (state.transcript.trim()) {
-      runAnalysis();
+      await runAnalysis();
     } else {
       setStatus("idle", "Questions skipped. You can add more details or finalize.");
     }
@@ -368,7 +369,10 @@ async function runAnalysis() {
     updateNote(res.rendered_note);
     updateSuggestions(res.ai_suggestions);
 
-    if (res.is_complete) {
+    if (state.finalized) {
+      hideQuestions();
+      setStatus("done", "Note finalized. You can copy it or start a new session.");
+    } else if (res.is_complete) {
       hideQuestions();
       setStatus("done", "All required fields are covered. You can finalize the note.");
     } else if (res.clarifying_questions && res.clarifying_questions.length > 0) {
@@ -392,16 +396,32 @@ async function runAnalysis() {
    ========================================================================= */
 
 async function handleFinalize() {
-  if (!state.sessionId) {
+  if (!state.transcript.trim()) {
     setStatus("idle", "Nothing to finalize yet. Record or type a conversation first.");
     return;
   }
+
+  if (!state.sessionId) {
+    setStatus("thinking", "Saving session before finalizing...");
+    try {
+      await runAnalysis();
+    } catch {
+      setStatus("idle", "Could not save session. Try again.");
+      return;
+    }
+    if (!state.sessionId) {
+      setStatus("idle", "Could not create session. Try again.");
+      return;
+    }
+  }
+
   setStatus("thinking", "Generating final note...");
   try {
     const res = await API.finalize({ session_id: state.sessionId });
     updateNote(res.rendered_note);
     setStatus("done", "Note finalized and saved. You can copy it to your PMS.");
     document.getElementById("copyBtn").disabled = false;
+    state.finalized = true;
     hideQuestions();
   } catch (err) {
     setStatus("idle", `Finalize error: ${err.message}`);
@@ -507,6 +527,7 @@ function handleCopy() {
 function handleClear() {
   state.sessionId = null;
   state.transcript = "";
+  state.finalized = false;
   state.questions = [];
   state.currentQuestionIdx = 0;
 

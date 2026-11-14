@@ -104,8 +104,8 @@ def analyze(
 
     try:
         result = analyze_transcript(req.transcript, template_key=template_key)
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(503, f"AI service error: {exc}")
 
     template = get_template(template_key)
     suggestions = result.get("ai_suggestions", {})
@@ -182,8 +182,8 @@ def finalize(
 
     try:
         result = generate_final_note(session.transcript, template_key=session.template_key)
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(503, f"AI service error: {exc}")
 
     session.note_json = json.dumps(result["note"])
     session.note_rendered = result["rendered_note"]
