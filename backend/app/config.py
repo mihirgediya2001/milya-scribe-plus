@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./milya_scribe.db"
     groq_api_key: str = ""
-    llm_model: str = "qwen/qwen3.8-27b"
+    llm_model: str = "llama-3.3-70b-versatile"
     stt_model: str = "whisper-large-v3-turbo"
     secret_key: str = "dev-secret-change-in-production"
 
