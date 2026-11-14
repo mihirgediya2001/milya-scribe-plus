@@ -124,6 +124,7 @@ def analyze_transcript(transcript: str, template_key: str | None = None) -> dict
     resp = client.chat.completions.create(
         model=settings.llm_model,
         temperature=0.1,
+        max_tokens=900,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": _build_analyze_system(template)},
@@ -173,6 +174,7 @@ def generate_final_note(transcript: str, template_key: str | None = None) -> dic
     resp = client.chat.completions.create(
         model=settings.llm_model,
         temperature=0.1,
+        max_tokens=900,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": _build_final_note_system(template)},

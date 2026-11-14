@@ -45,7 +45,7 @@ graph TB
 
     subgraph AI["Groq Cloud (Free Tier)"]
         WHISPER[Whisper large-v3-turbo<br>Speech-to-Text]
-        LLAMA[Llama 3.3 70B Versatile<br>JSON mode analysis + note gen]
+        QWEN[Qwen 3.8 27B<br>JSON mode analysis + note gen]
     end
 
     subgraph DB["SQLite"]
@@ -62,7 +62,7 @@ graph TB
     SCRIBE_R --> DEPS
     ADMIN_R --> DEPS
     SCRIBE_R --> SVC_STT -->|Audio bytes| WHISPER
-    SCRIBE_R --> SVC_AGENT -->|Transcript + template schema| LLAMA
+    SCRIBE_R --> SVC_AGENT -->|Transcript + template schema| QWEN
     SCRIBE_R --> TMPL_R --> TMPL_REG
     SVC_AGENT --> TMPL_REG
     AUTH --> SVC_AUTH
@@ -82,7 +82,7 @@ sequenceDiagram
     participant D as Dentist
     participant UI as Browser (scribe.js)
     participant API as FastAPI Backend
-    participant LLM as Groq Llama 3.3 70B
+    participant LLM as Groq Qwen 27B
 
     D->>UI: Records audio or types text
     UI->>API: POST /transcribe (audio blob)
@@ -269,7 +269,7 @@ erDiagram
 | Backend | Python 3.11, FastAPI, SQLAlchemy, Pydantic v2, SQLite |
 | Frontend | Vanilla HTML/CSS/JS (no build step, no framework) |
 | STT | Groq Whisper large-v3-turbo (dental vocabulary bias) |
-| LLM | Groq Llama 3.3 70B Versatile (JSON mode, temperature 0.1) |
+| LLM | Groq Qwen 3.8 27B (JSON mode, temperature 0.1, max 900 tokens) |
 | Auth | bcrypt password hashing, Bearer JWT tokens |
 | Hosting | Render (free tier, auto-deploy from GitHub) |
 
