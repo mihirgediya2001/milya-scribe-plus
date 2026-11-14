@@ -21,5 +21,16 @@ class Base(DeclarativeBase):
 
 
 def init_db() -> None:
-    """Create all tables that don't exist yet."""
+    """Create all tables that don't exist yet and run lightweight migrations."""
     Base.metadata.create_all(bind=engine)
+
+    with engine.connect() as conn:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        if "scribe_sessions" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("scribe_sessions")]
+            if "template_key" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE scribe_sessions ADD COLUMN template_key VARCHAR(40) DEFAULT 'comprehensive_exam'"
+                ))
+                conn.commit()

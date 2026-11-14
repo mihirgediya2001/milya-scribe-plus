@@ -16,6 +16,7 @@ class AnalyzeRequest(BaseModel):
 
     transcript: str
     session_id: Optional[str] = None  # omit on the first call
+    template_key: Optional[str] = None  # omit to keep current or use default
 
 
 class TemplateField(BaseModel):
@@ -65,9 +66,15 @@ class SessionOut(BaseModel):
     updated_at: str
 
 
+class TemplateInfo(BaseModel):
+    key: str
+    name: str
+
+
 class SessionDetail(BaseModel):
     id: str
     title: str = "Untitled Session"
+    template_key: str = "comprehensive_exam"
     transcript: str
     note_rendered: str
     status: str

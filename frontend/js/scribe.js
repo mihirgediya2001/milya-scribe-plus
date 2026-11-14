@@ -1,7 +1,14 @@
 document.addEventListener("DOMContentLoaded", () => {
   if (!API.getToken()) { window.location.href = "/login"; return; }
   populateNavbar();
-  initScribe();
+
+  const params = new URLSearchParams(window.location.search);
+  const resumeId = params.get("session");
+  if (resumeId) {
+    loadSession(resumeId);
+  } else {
+    loadTemplateSelector();
+  }
 });
 
 
@@ -26,6 +33,7 @@ function populateNavbar() {
 
 let state = {
   sessionId: null,
+  templateKey: null,
   transcript: "",
   mediaRecorder: null,
   isRecording: false,
@@ -37,6 +45,41 @@ let state = {
   replyChunks: [],
 };
 
+
+/* =========================================================================
+   Template Selector
+   ========================================================================= */
+
+async function loadTemplateSelector() {
+  const grid = document.getElementById("templateGrid");
+  try {
+    const templates = await API.request("GET", "/api/scribe/templates");
+    grid.innerHTML = "";
+    for (const t of templates) {
+      const btn = document.createElement("button");
+      btn.className = "template-btn";
+      btn.textContent = t.name;
+      btn.addEventListener("click", () => selectTemplate(t.key, t.name));
+      grid.appendChild(btn);
+    }
+  } catch {
+    grid.innerHTML = '<p class="text-muted">Could not load templates. Using default.</p>';
+    selectTemplate("comprehensive_exam", "Comprehensive Examination");
+  }
+}
+
+function selectTemplate(key, name) {
+  state.templateKey = key;
+  document.getElementById("templateBadge").textContent = name;
+  document.getElementById("templateSelector").classList.add("hidden");
+  document.getElementById("scribeContent").classList.remove("hidden");
+  initScribe();
+}
+
+
+/* =========================================================================
+   Scribe init
+   ========================================================================= */
 
 function initScribe() {
   document.getElementById("recordBtn").addEventListener("click", toggleRecording);
@@ -60,10 +103,6 @@ function initScribe() {
   document.getElementById("skipQuestionBtn").addEventListener("click", skipQuestion);
 
   checkPermissions();
-
-  const params = new URLSearchParams(window.location.search);
-  const resumeId = params.get("session");
-  if (resumeId) loadSession(resumeId);
 }
 
 
@@ -79,10 +118,18 @@ function checkPermissions() {
 
 async function loadSession(sessionId) {
   setStatus("thinking", "Loading session...");
+  document.getElementById("templateSelector").classList.add("hidden");
+  document.getElementById("scribeContent").classList.remove("hidden");
+  initScribe();
+
   try {
     const res = await API.getSession(sessionId);
     state.sessionId = res.id;
+    state.templateKey = res.template_key || "comprehensive_exam";
     state.transcript = res.transcript;
+
+    document.getElementById("templateBadge").textContent =
+      templateKeyToName(state.templateKey);
 
     const box = document.getElementById("transcriptBox");
     box.innerHTML = "";
@@ -108,8 +155,23 @@ async function loadSession(sessionId) {
   }
 }
 
+function templateKeyToName(key) {
+  const names = {
+    comprehensive_exam: "Comprehensive Examination",
+    emergency_exam: "Emergency Examination",
+    recall_exam: "Recall Examination",
+    soap_comprehensive: "SOAP Comprehensive / Recall Examination",
+    soap_emergency: "SOAP Emergency Examination",
+    soap_summarize: "SOAP Summarize",
+    summarize: "Summarize",
+  };
+  return names[key] || key;
+}
 
-/* Recording (main input) */
+
+/* =========================================================================
+   Recording (main input)
+   ========================================================================= */
 
 async function toggleRecording() {
   if (state.isRecording) stopRecording();
@@ -146,7 +208,7 @@ function stopRecording() {
     state.mediaRecorder.stop();
   }
   state.isRecording = false;
-  btn.textContent = "🎙";
+  btn.textContent = "🎤";
   btn.classList.remove("active");
   setStatus("thinking", "Transcribing audio...");
 }
@@ -159,7 +221,9 @@ function getMimeType() {
 }
 
 
-/* Recording for clarifying question replies */
+/* =========================================================================
+   Recording for clarifying question replies
+   ========================================================================= */
 
 async function toggleReplyRecording() {
   if (state.isReplyRecording) stopReplyRecording();
@@ -196,7 +260,7 @@ function stopReplyRecording() {
     state.replyRecorder.stop();
   }
   state.isReplyRecording = false;
-  btn.textContent = "🎙";
+  btn.textContent = "🎤";
   btn.classList.remove("active");
   setStatus("thinking", "Transcribing your answer...");
 }
@@ -218,7 +282,9 @@ async function handleReplyAudioBlob(blob) {
 }
 
 
-/* Handle inputs */
+/* =========================================================================
+   Handle inputs
+   ========================================================================= */
 
 async function handleAudioBlob(blob) {
   const formData = new FormData();
@@ -226,7 +292,7 @@ async function handleAudioBlob(blob) {
   try {
     const res = await API.transcribe(formData);
     if (res.text) {
-      addToTranscript("patient", res.text);
+      addToTranscript("conversation", res.text);
       await runAnalysis();
     } else {
       setStatus("idle", "No speech detected. Try again.");
@@ -240,7 +306,7 @@ function handleTextInput(textarea) {
   const text = textarea.value.trim();
   if (!text) return;
   textarea.value = "";
-  addToTranscript("patient", text);
+  addToTranscript("conversation", text);
   runAnalysis();
 }
 
@@ -252,7 +318,7 @@ async function handleReply() {
 
   const q = state.questions[state.currentQuestionIdx];
   if (q) addToTranscript("agent", q.question);
-  addToTranscript("patient", text);
+  addToTranscript("conversation", text);
 
   state.currentQuestionIdx++;
   if (state.currentQuestionIdx < state.questions.length) {
@@ -277,7 +343,9 @@ function skipQuestion() {
 }
 
 
-/* Transcript */
+/* =========================================================================
+   Transcript
+   ========================================================================= */
 
 function addToTranscript(role, text) {
   state.transcript += `\n[${role.toUpperCase()}]: ${text}`;
@@ -295,7 +363,9 @@ function addToTranscript(role, text) {
 }
 
 
-/* Analysis loop */
+/* =========================================================================
+   Analysis loop
+   ========================================================================= */
 
 async function runAnalysis() {
   setStatus("thinking", "Analyzing transcript...");
@@ -303,6 +373,7 @@ async function runAnalysis() {
     const res = await API.analyze({
       transcript: state.transcript,
       session_id: state.sessionId,
+      template_key: state.templateKey,
     });
 
     state.sessionId = res.session_id;
@@ -330,11 +401,13 @@ async function runAnalysis() {
 }
 
 
-/* Finalize */
+/* =========================================================================
+   Finalize
+   ========================================================================= */
 
 async function handleFinalize() {
   if (!state.sessionId) {
-    setStatus("idle", "Nothing to finalize yet. Record or type a complaint first.");
+    setStatus("idle", "Nothing to finalize yet. Record or type a conversation first.");
     return;
   }
   setStatus("thinking", "Generating final note...");
@@ -350,7 +423,9 @@ async function handleFinalize() {
 }
 
 
-/* UI updaters */
+/* =========================================================================
+   UI updaters
+   ========================================================================= */
 
 function setStatus(type, message) {
   const el = document.getElementById("statusBar");
@@ -445,21 +520,23 @@ function handleCopy() {
 
 function handleClear() {
   state = {
-    sessionId: null, transcript: "", mediaRecorder: null, isRecording: false,
+    sessionId: null, templateKey: null, transcript: "", mediaRecorder: null, isRecording: false,
     chunks: [], questions: [], currentQuestionIdx: 0, replyRecorder: null,
     isReplyRecording: false, replyChunks: [],
   };
+  document.getElementById("scribeContent").classList.add("hidden");
+  document.getElementById("templateSelector").classList.remove("hidden");
   document.getElementById("transcriptBox").innerHTML =
     '<p class="placeholder">Your conversation will appear here.</p>';
   document.getElementById("fieldList").innerHTML = "";
-  document.getElementById("progressText").textContent = "0 / 10 fields";
+  document.getElementById("progressText").textContent = "0 fields";
   document.getElementById("noteOutput").textContent = "Note will appear here.";
   document.getElementById("copyBtn").disabled = true;
   document.getElementById("suggestionsBox").classList.add("hidden");
   hideQuestions();
   document.title = "Scribe Session - Milya Scribe Plus";
-  setStatus("idle", "Ready. Record or type the patient's complaint.");
   window.history.replaceState(null, "", "/scribe");
+  loadTemplateSelector();
 }
 
 function escapeHtml(str) {

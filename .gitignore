@@ -10,3 +10,6 @@ backend/milya_scribe*.db
 *.egg-info/
 dist/
 build/
+.claude/
+.agents/
+skills-lock.json

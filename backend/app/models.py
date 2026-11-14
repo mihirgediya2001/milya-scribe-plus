@@ -87,6 +87,7 @@ class ScribeSession(Base):
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinics.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    template_key: Mapped[str] = mapped_column(String(40), default="comprehensive_exam")
     transcript: Mapped[str] = mapped_column(Text, default="")
     note_json: Mapped[str] = mapped_column(Text, default="{}")
     note_rendered: Mapped[str] = mapped_column(Text, default="")

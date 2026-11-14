@@ -5,6 +5,7 @@ clarifying question the agent asks when a field is missing from the transcript.
 """
 
 TEMPLATE_NAME = "Comprehensive Examination"
+TEMPLATE_KEY = "comprehensive_exam"
 
 FIELDS: dict[str, dict] = {
     "chief_complaint": {

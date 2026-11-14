@@ -19,11 +19,12 @@ from app.schemas.scribe import (
     SessionDetail,
     SessionOut,
     TemplateField,
+    TemplateInfo,
     TranscribeResponse,
 )
 from app.services.agent import analyze_transcript, generate_final_note
 from app.services.transcription import transcribe_audio
-from app.templates.comprehensive_exam import FIELDS
+from app.templates import DEFAULT_TEMPLATE_KEY, TEMPLATE_LIST, get_template
 
 router = APIRouter(prefix="/api/scribe", tags=["scribe"])
 
@@ -32,10 +33,10 @@ router = APIRouter(prefix="/api/scribe", tags=["scribe"])
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build_template_fields(filled: dict, missing: list) -> list[TemplateField]:
+def _build_template_fields(template, filled: dict, missing: list) -> list[TemplateField]:
     """Merge filled/missing info with the template metadata."""
     fields: list[TemplateField] = []
-    for key, meta in FIELDS.items():
+    for key, meta in template.FIELDS.items():
         if key in filled:
             fields.append(TemplateField(
                 name=key, label=meta["label"], value=filled[key], status="filled",
@@ -62,6 +63,12 @@ def _audit(db, user, action: str, target_type: str = "", target_id: str = "", de
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@router.get("/templates", response_model=list[TemplateInfo])
+def list_templates():
+    """Return all available summary templates."""
+    return [TemplateInfo(**t) for t in TEMPLATE_LIST]
+
 
 @router.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe(
@@ -93,11 +100,14 @@ def analyze(
     if not req.transcript.strip():
         raise HTTPException(400, "Transcript is empty")
 
+    template_key = req.template_key or DEFAULT_TEMPLATE_KEY
+
     try:
-        result = analyze_transcript(req.transcript)
+        result = analyze_transcript(req.transcript, template_key=template_key)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
 
+    template = get_template(template_key)
     suggestions = result.get("ai_suggestions", {})
 
     if req.session_id:
@@ -112,6 +122,7 @@ def analyze(
         if session is None:
             raise HTTPException(404, "Session not found")
         session.transcript = req.transcript
+        session.template_key = template_key
         session.note_json = json.dumps(result["note"])
         session.note_rendered = result["rendered_note"]
         session.suggestions_json = json.dumps(suggestions)
@@ -122,6 +133,7 @@ def analyze(
             clinic_id=user.clinic_id,
             user_id=user.id,
             title=result.get("session_title", "Untitled Session"),
+            template_key=template_key,
             transcript=req.transcript,
             note_json=json.dumps(result["note"]),
             note_rendered=result["rendered_note"],
@@ -140,7 +152,7 @@ def analyze(
         note=result["note"],
         rendered_note=result["rendered_note"],
         template_fields=_build_template_fields(
-            result["filled_fields"], result["missing_fields"],
+            template, result["filled_fields"], result["missing_fields"],
         ),
         clarifying_questions=[
             ClarifyingQuestion(**q) for q in result["clarifying_questions"]
@@ -169,7 +181,7 @@ def finalize(
         raise HTTPException(404, "Session not found")
 
     try:
-        result = generate_final_note(session.transcript)
+        result = generate_final_note(session.transcript, template_key=session.template_key)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
 
@@ -215,6 +227,7 @@ def get_session(
     return SessionDetail(
         id=session.id,
         title=session.title or "Untitled Session",
+        template_key=session.template_key or DEFAULT_TEMPLATE_KEY,
         transcript=session.transcript,
         note_rendered=session.note_rendered or "",
         status=session.status.value,

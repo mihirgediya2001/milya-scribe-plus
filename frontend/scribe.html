@@ -16,7 +16,21 @@
   </nav>
 
   <div class="container">
-    <div class="scribe-layout">
+
+    <!-- Template selector (shown before session starts) -->
+    <div id="templateSelector" class="template-selector">
+      <div class="template-selector-header">
+        <h2>Summary template</h2>
+        <p class="text-muted">Choose a note format for this session</p>
+      </div>
+      <div id="templateGrid" class="template-grid"></div>
+      <details class="template-details">
+        <summary>Read full original template</summary>
+        <pre id="templatePreview" class="template-preview"></pre>
+      </details>
+    </div>
+
+    <div id="scribeContent" class="scribe-layout hidden">
 
       <!-- ============================================================= -->
       <!-- LEFT PANEL: conversation + input                              -->
@@ -26,7 +40,7 @@
           <div class="panel-head">
             <h2>Conversation</h2>
             <div style="display:flex; gap:6px">
-              <span style="background:#e0f7fa; color:#0e7490; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600">
+              <span id="templateBadge" style="background:#e0f7fa; color:#0e7490; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600">
                 Comprehensive Examination
               </span>
               <button id="clearBtn" class="btn btn-ghost btn-sm">Clear</button>
@@ -34,13 +48,13 @@
           </div>
 
           <div id="statusBar" class="status-bar idle">
-            Ready. Record or type the patient's complaint.
+            Ready. Record or type the dentist-patient conversation.
           </div>
 
           <!-- Text + voice input -->
           <div class="input-area">
             <textarea id="textInput" class="form-control"
-                      placeholder="Type what the patient says, or click the mic to record..."></textarea>
+                      placeholder="Type or record the conversation between dentist and patient..."></textarea>
             <button id="recordBtn" class="btn btn-primary btn-record" title="Record audio">
               🎙
             </button>
@@ -90,7 +104,7 @@
         <div class="card" style="flex:1; display:flex; flex-direction:column">
           <div class="panel-head">
             <h2>Template Fields</h2>
-            <span id="progressText" class="progress-text">0 / 10 fields</span>
+            <span id="progressText" class="progress-text">0 fields</span>
           </div>
 
           <ul id="fieldList" class="field-list"></ul>
@@ -122,10 +136,10 @@
         </div>
       </div>
 
-    </div>
-  </div>
+    </div>  <!-- /scribeContent -->
+  </div>  <!-- /container -->
 
   <script src="/js/api.js?v=2"></script>
-  <script src="/js/scribe.js?v=2"></script>
+  <script src="/js/scribe.js?v=3"></script>
 </body>
 </html>
